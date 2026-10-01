@@ -1,0 +1,1483 @@
+<!DOCTYPE html>
+<html lang="es" class="h-full bg-slate-950 text-slate-100">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GeoHLR & CDR Telecom Intelligence C4 Dashboard</title>
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            tactical: {
+              bg: '#040711',
+              panel: '#090f1e',
+              card: '#0f172a',
+              border: '#1e293b',
+              accent: '#06b6d4',
+              neon: '#10b981',
+              amber: '#f59e0b',
+              rose: '#f43f5e'
+            }
+          },
+          fontFamily: {
+            mono: ['JetBrains Mono', 'Menlo', 'monospace'],
+            sans: ['Inter', 'sans-serif']
+          },
+          animation: {
+            'radar-pulse': 'radarPulse 2s cubic-bezier(0, 0, 0.2, 1) infinite',
+            'glow-pulse': 'glowPulse 2s ease-in-out infinite alternate',
+            'spin-slow': 'spin 12s linear infinite'
+          },
+          keyframes: {
+            radarPulse: {
+              '0%': { transform: 'scale(0.8)', opacity: '0.9', boxShadow: '0 0 0 0 rgba(6, 182, 212, 0.7)' },
+              '70%': { transform: 'scale(1.5)', opacity: '0', boxShadow: '0 0 0 25px rgba(6, 182, 212, 0)' },
+              '100%': { transform: 'scale(0.8)', opacity: '0' }
+            },
+            glowPulse: {
+              '0%': { filter: 'drop-shadow(0 0 2px rgba(6, 182, 212, 0.4))' },
+              '100%': { filter: 'drop-shadow(0 0 10px rgba(16, 185, 129, 0.8))' }
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Leaflet CSS & JS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #040711;
+      background-image: 
+        radial-gradient(circle at 50% 0%, rgba(6, 182, 212, 0.08) 0%, transparent 65%),
+        linear-gradient(to right, rgba(15, 23, 42, 0.3) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(15, 23, 42, 0.3) 1px, transparent 1px);
+      background-size: 100% 100%, 32px 32px, 32px 32px;
+    }
+
+    /* Custom Scrollbars */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #040711;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #1e293b;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #06b6d4;
+    }
+
+    /* Target Radar Marker */
+    .target-radar-marker {
+      position: relative;
+      width: 30px;
+      height: 30px;
+      background: radial-gradient(circle, #06b6d4 35%, rgba(6,182,212,0.3) 70%);
+      border: 2px solid #ffffff;
+      border-radius: 50%;
+      box-shadow: 0 0 18px #06b6d4;
+    }
+    .target-radar-marker::after {
+      content: '';
+      position: absolute;
+      inset: -12px;
+      border: 2px dashed #22d3ee;
+      border-radius: 50%;
+      animation: radarPulse 2s infinite ease-out;
+    }
+
+    .cell-tower-marker {
+      width: 32px;
+      height: 32px;
+      background-color: #090f1e;
+      border: 2px solid #10b981;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #10b981;
+      box-shadow: 0 0 12px rgba(16, 185, 129, 0.5);
+    }
+
+    /* Leaflet Popup Styling */
+    .leaflet-popup-content-wrapper {
+      background: #090f1e !important;
+      color: #f8fafc !important;
+      border: 1px solid #06b6d4 !important;
+      border-radius: 0.75rem !important;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.9) !important;
+    }
+    .leaflet-popup-tip {
+      background: #06b6d4 !important;
+    }
+
+    /* Highlight active CDR row during playback */
+    .active-cdr-row {
+      background-color: rgba(6, 182, 212, 0.25) !important;
+      border-left: 4px solid #06b6d4 !important;
+    }
+  </style>
+</head>
+<body class="h-full flex flex-col text-slate-100 antialiased selection:bg-cyan-500 selection:text-slate-950">
+
+  <!-- HEADER -->
+  <header class="border-b border-slate-800/80 bg-slate-950/90 backdrop-blur sticky top-0 z-40 px-4 lg:px-8 py-3 flex flex-wrap items-center justify-between gap-4 shadow-2xl">
+    <div class="flex items-center gap-3.5">
+      <div class="h-10 w-10 rounded-xl bg-gradient-to-tr from-cyan-600 via-teal-500 to-emerald-400 flex items-center justify-center text-slate-950 font-bold shadow-lg shadow-cyan-500/20">
+        <i class="fa-solid fa-radar text-xl text-slate-950 animate-spin-slow"></i>
+      </div>
+      <div>
+        <h1 class="text-base sm:text-lg font-bold tracking-wide text-slate-100 flex items-center gap-2">
+          GeoHLR & CDR Intelligence C4
+          <span class="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-800/80">HMAC-SHA256 & LocationIQ</span>
+        </h1>
+        <p class="text-xs text-slate-400">Interrogación HLR (hlr-lookups.com) • Triangulación Cell ID • Análisis Temporal de CDR</p>
+      </div>
+    </div>
+
+    <!-- API Badges -->
+    <div class="flex items-center gap-2 sm:gap-3 flex-wrap text-xs font-mono">
+      <div class="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+        <span class="text-slate-400">HLR Key:</span>
+        <span class="text-emerald-400 font-bold" id="badge-hlr-key">aa8f82cf62aa</span>
+      </div>
+      <div class="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300">
+        <span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+        <span class="text-slate-400">Map Token:</span>
+        <span class="text-cyan-300 font-bold truncate max-w-[100px]" id="badge-map-key">cb1_3yax...</span>
+      </div>
+      <div class="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300">
+        <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+        <span class="text-slate-400">Cell API:</span>
+        <span class="text-amber-300 font-bold truncate max-w-[90px]" id="badge-cell-key">pk.9654...</span>
+      </div>
+      <button onclick="openConfigModal()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl font-semibold transition flex items-center gap-1.5 active:scale-95">
+        <i class="fa-solid fa-sliders text-cyan-400"></i>
+        <span>Llaves API</span>
+      </button>
+    </div>
+  </header>
+
+  <main class="flex-1 p-4 lg:p-6 max-w-[1920px] w-full mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+    <!-- LEFT COLUMN: Search, HLR Dossier, HMAC Inspector & Import (5 Cols) -->
+    <section class="lg:col-span-5 flex flex-col gap-6">
+
+      <!-- Query Form -->
+      <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-2xl relative overflow-hidden backdrop-blur">
+        <div class="absolute top-0 right-0 w-48 h-48 bg-cyan-500/5 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
+            <i class="fa-solid fa-satellite-dish text-cyan-400"></i>
+            Consulta HLR v2 Digest & Generación CDR
+          </h2>
+          <span class="text-[11px] font-mono text-slate-500">POST /api/v2/hlr-lookup</span>
+        </div>
+
+        <form onsubmit="handleSearchSubmit(event)" class="space-y-4">
+          <div class="grid grid-cols-1 sm:grid-cols-12 gap-3">
+            <div class="sm:col-span-4">
+              <label class="block text-[11px] font-mono text-slate-400 mb-1">País / LADA</label>
+              <select id="country-selector" onchange="handleCountryChange()" class="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-xs font-mono text-slate-100 outline-none focus:border-cyan-500">
+                <option value="+52">🇲🇽 México (+52)</option>
+                <option value="+1">🇺🇸 EE.UU. (+1)</option>
+                <option value="+34">🇪🇸 España (+34)</option>
+                <option value="+57">🇨🇴 Colombia (+57)</option>
+                <option value="+54">🇦🇷 Argentina (+54)</option>
+                <option value="+56">🇨🇱 Chile (+56)</option>
+              </select>
+            </div>
+
+            <div class="sm:col-span-8">
+              <label class="block text-[11px] font-mono text-slate-400 mb-1">Número MSISDN (E.164)</label>
+              <div class="relative">
+                <input 
+                  type="text" 
+                  id="phone-input" 
+                  value="528112345678" 
+                  oninput="updateDigestInspector()"
+                  placeholder="Ej: 528112345678" 
+                  class="w-full pl-4 pr-10 py-3 bg-slate-950 border border-slate-700 focus:border-cyan-500 rounded-xl font-mono text-sm sm:text-base text-slate-100 placeholder-slate-600 outline-none"
+                  required
+                >
+                <button type="button" onclick="clearInput()" class="absolute right-3 top-3 text-slate-500 hover:text-slate-300">
+                  <i class="fa-solid fa-xmark"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Presets -->
+          <div>
+            <span class="text-[11px] font-mono text-slate-400 block mb-1.5">Objetivos de Prueba Rápida:</span>
+            <div class="flex flex-wrap gap-1.5" id="presets-buttons"></div>
+          </div>
+
+          <!-- Submit Button -->
+          <button 
+            type="submit" 
+            class="w-full py-3.5 px-6 bg-gradient-to-r from-cyan-500 via-teal-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-slate-950 font-bold rounded-xl shadow-lg shadow-cyan-500/20 transition-all flex items-center justify-center gap-3 text-sm active:scale-[0.99]"
+          >
+            <i class="fa-solid fa-bolt text-lg"></i>
+            <span>INTERROGAR HLR & SIMULAR TRAYECTORIA CDR</span>
+          </button>
+        </form>
+      </div>
+
+      <!-- HLR Intelligence Dossier Card -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-2xl flex flex-col justify-between">
+        <div>
+          <div class="flex items-center justify-between pb-3 border-b border-slate-800 mb-4">
+            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-200 flex items-center gap-2">
+              <i class="fa-solid fa-microchip text-cyan-400"></i>
+              Expediente Técnico HLR & Portabilidad (MNP)
+            </h3>
+            <span id="card-mnp-status" class="px-3 py-0.5 rounded-full text-xs font-mono font-bold bg-slate-800 text-slate-400 border border-slate-700">
+              Listo
+            </span>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3 text-xs font-mono">
+            <div>
+              <span class="text-slate-500 block text-[10px]">MSISDN Normalizado:</span>
+              <span id="res-msisdn" class="text-cyan-300 font-bold text-sm">--</span>
+            </div>
+            <div>
+              <span class="text-slate-500 block text-[10px]">Estatus Suscriptor HLR:</span>
+              <span id="res-hlr-status" class="text-emerald-400 font-bold">--</span>
+            </div>
+            <div>
+              <span class="text-slate-500 block text-[10px]">Operador Donante (Origen):</span>
+              <span id="res-orig-mno" class="text-slate-200">--</span>
+            </div>
+            <div>
+              <span class="text-slate-500 block text-[10px]">Operador Receptor (Actual):</span>
+              <span id="res-curr-mno" class="text-emerald-300 font-bold">--</span>
+            </div>
+            <div>
+              <span class="text-slate-500 block text-[10px]">Código Red (MCC/MNC):</span>
+              <span id="res-mccmnc" class="text-slate-200">--</span>
+            </div>
+            <div>
+              <span class="text-slate-500 block text-[10px]">Prefijo IMSI SIM:</span>
+              <span id="res-imsi" class="text-slate-200">--</span>
+            </div>
+            <div>
+              <span class="text-slate-500 block text-[10px]">Conmutador MSC Central:</span>
+              <span id="res-msc" class="text-slate-200">--</span>
+            </div>
+            <div>
+              <span class="text-slate-500 block text-[10px]">Tecnología Red:</span>
+              <span id="res-tech" class="text-cyan-400 font-bold">--</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="pt-4 border-t border-slate-800 mt-4 flex items-center justify-between gap-2">
+          <span class="text-[11px] font-mono text-slate-400" id="res-location-city">Ubicación: --</span>
+          <button onclick="exportJsonDossier()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold transition border border-slate-700 flex items-center gap-1.5">
+            <i class="fa-solid fa-file-code text-cyan-400"></i> Dossier JSON
+          </button>
+        </div>
+      </div>
+
+      <!-- Cryptographic Inspector Card -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-2xl backdrop-blur">
+        <div class="flex items-center justify-between pb-3 border-b border-slate-800 mb-4">
+          <h2 class="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
+            <i class="fa-solid fa-shield-halved text-emerald-400"></i>
+            Inspector HMAC-SHA256 & cURL Generator
+          </h2>
+          <button onclick="copyCurlCommand()" class="text-xs text-cyan-400 hover:underline flex items-center gap-1 font-mono">
+            <i class="fa-solid fa-terminal"></i> Copiar cURL
+          </button>
+        </div>
+
+        <div class="space-y-2 text-xs font-mono mb-3">
+          <div class="grid grid-cols-2 gap-2">
+            <div class="bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+              <span class="text-slate-500 block text-[10px]">X-Digest-Key</span>
+              <span id="insp-digest-key" class="text-cyan-300 font-bold break-all">aa8f82cf62aa</span>
+            </div>
+            <div class="bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+              <span class="text-slate-500 block text-[10px]">X-Digest-Timestamp</span>
+              <span id="insp-timestamp" class="text-amber-300 font-bold break-all">0</span>
+            </div>
+          </div>
+
+          <div class="bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+            <span class="text-slate-500 block text-[10px]">X-Digest-Signature (HMAC-SHA256)</span>
+            <span id="insp-signature" class="text-emerald-400 font-bold break-all text-[11px]">Generando...</span>
+          </div>
+        </div>
+
+        <!-- cURL Command Box -->
+        <div class="bg-slate-950 p-2.5 rounded-xl border border-slate-800 relative">
+          <span class="text-[10px] font-mono text-slate-500 block mb-1">Comando cURL generado:</span>
+          <code id="insp-curl" class="text-[10px] font-mono text-slate-300 break-all block leading-tight">curl -X POST ...</code>
+        </div>
+      </div>
+
+      <!-- External CDR File Importer -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-2xl">
+        <div class="flex items-center justify-between pb-3 border-b border-slate-800 mb-3">
+          <h3 class="text-xs font-bold uppercase tracking-wider text-slate-200 flex items-center gap-2">
+            <i class="fa-solid fa-file-csv text-amber-400"></i>
+            Importador de Archivos CDR (CSV / TXT)
+          </h3>
+          <span class="text-[10px] font-mono text-slate-500">Formato Estándar C4</span>
+        </div>
+
+        <div class="border-2 border-dashed border-slate-700 hover:border-cyan-500 rounded-xl p-4 text-center cursor-pointer transition bg-slate-950/50 relative" id="drop-zone">
+          <input type="file" id="cdr-file-input" accept=".csv,.txt" onchange="handleFileSelect(event)" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
+          <i class="fa-solid fa-cloud-arrow-up text-2xl text-cyan-400 mb-1 block"></i>
+          <p class="text-xs text-slate-300 font-medium">Arrastra un archivo CDR o <span class="text-cyan-400 underline">selecciona un archivo</span></p>
+          <p class="text-[10px] text-slate-500 font-mono mt-1">Soporta campos: fecha, tipo, contacto, duracion, lat, lng, cellid</p>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- RIGHT COLUMN: Tactical Map & Playback Controls (7 Cols) -->
+    <section class="lg:col-span-7 flex flex-col gap-6">
+
+      <!-- Map Container -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-2xl flex flex-col h-[600px] relative">
+        
+        <!-- Map Header Controls -->
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-3 px-1">
+          <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-200">
+              Visor Geográfico C4 & Cobertura de Celdas
+            </h3>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <!-- Map Layers -->
+            <div class="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800 text-[11px] font-mono">
+              <button id="map-btn-dark" onclick="setMapLayer('dark')" class="px-2.5 py-1 rounded bg-cyan-600 text-slate-950 font-bold transition">Dark Carto</button>
+              <button id="map-btn-sat" onclick="setMapLayer('sat')" class="px-2.5 py-1 rounded text-slate-400 hover:text-slate-200 transition">Satélite</button>
+            </div>
+
+            <button onclick="recenterMapTarget()" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-cyan-400 text-xs rounded-lg border border-slate-700 font-mono transition">
+              <i class="fa-solid fa-crosshairs"></i> Target
+            </button>
+          </div>
+        </div>
+
+        <!-- Leaflet Map Div -->
+        <div id="leaflet-map" class="w-full flex-1 rounded-xl z-10 border border-slate-800 overflow-hidden"></div>
+
+        <!-- Playback Controls Bar -->
+        <div class="mt-3 bg-slate-950 p-3 rounded-xl border border-slate-800 flex flex-wrap items-center justify-between gap-3 font-mono text-xs">
+          
+          <!-- Play / Pause Buttons -->
+          <div class="flex items-center gap-2">
+            <button id="btn-play-cdr" onclick="toggleCdrPlayback()" class="w-8 h-8 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold flex items-center justify-center transition">
+              <i id="icon-play" class="fa-solid fa-play"></i>
+            </button>
+            <button onclick="resetCdrPlayback()" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center justify-center transition border border-slate-700">
+              <i class="fa-solid fa-rotate-left"></i>
+            </button>
+          </div>
+
+          <!-- Timeline Slider -->
+          <div class="flex-1 min-w-[180px] flex flex-col gap-1">
+            <div class="flex justify-between text-[10px] text-slate-400">
+              <span>Reproducción de Trayectoria CDR</span>
+              <span id="pb-time-display" class="text-cyan-300 font-bold">Paso 0 / 0</span>
+            </div>
+            <input 
+              type="range" 
+              id="pb-slider" 
+              min="0" 
+              max="10" 
+              value="0" 
+              oninput="seekCdrStep(this.value)"
+              class="w-full accent-cyan-400 bg-slate-800 h-1.5 rounded-lg cursor-pointer"
+            >
+          </div>
+
+          <!-- Speed Selector -->
+          <div class="flex items-center gap-1 text-[11px]">
+            <span class="text-slate-500">Vel:</span>
+            <button onclick="setPlaybackSpeed(1)" id="spd-1" class="px-2 py-0.5 rounded bg-cyan-600 text-slate-950 font-bold">1x</button>
+            <button onclick="setPlaybackSpeed(2)" id="spd-2" class="px-2 py-0.5 rounded bg-slate-800 text-slate-300">2x</button>
+            <button onclick="setPlaybackSpeed(5)" id="spd-5" class="px-2 py-0.5 rounded bg-slate-800 text-slate-300">5x</button>
+          </div>
+
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- ROW 2: CDR Log Table & Interactive Filters (12 Cols) -->
+    <section class="lg:col-span-12 bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-2xl flex flex-col gap-4">
+      
+      <div class="flex flex-wrap items-center justify-between gap-4 pb-3 border-b border-slate-800">
+        <div>
+          <h3 class="text-sm font-bold uppercase tracking-wider text-slate-200 flex items-center gap-2">
+            <i class="fa-solid fa-list-check text-cyan-400"></i>
+            Registro de Detalle de Llamadas (CDR) - Interacciones del Objetivo
+          </h3>
+          <p class="text-xs text-slate-400 font-mono">Total de registros: <span id="cdr-count" class="text-cyan-300 font-bold">0</span> de eventos procesados</p>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2 text-xs font-mono">
+          <button onclick="exportCdrCsv()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl border border-slate-700 flex items-center gap-1.5">
+            <i class="fa-solid fa-file-csv text-emerald-400"></i> Exportar CSV
+          </button>
+          <button onclick="exportPoliceJsonReport()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl border border-slate-700 flex items-center gap-1.5">
+            <i class="fa-solid fa-shield-cat text-rose-400"></i> Reporte Policial JSON
+          </button>
+        </div>
+      </div>
+
+      <!-- Filters Toolbar -->
+      <div class="grid grid-cols-1 sm:grid-cols-12 gap-3 text-xs font-mono">
+        <div class="sm:col-span-4">
+          <input 
+            type="text" 
+            id="cdr-filter-search" 
+            oninput="applyCdrFilters()" 
+            placeholder="Buscar por contacto, Cell ID o dirección..." 
+            class="w-full p-2.5 bg-slate-950 border border-slate-700 rounded-xl text-slate-200 outline-none focus:border-cyan-500"
+          >
+        </div>
+
+        <div class="sm:col-span-3">
+          <select id="cdr-filter-type" onchange="applyCdrFilters()" class="w-full p-2.5 bg-slate-950 border border-slate-700 rounded-xl text-slate-200 outline-none focus:border-cyan-500">
+            <option value="ALL">Todos los Eventos</option>
+            <option value="ENTRANTE">ENTRANTE (Llamada)</option>
+            <option value="SALIENTE">SALIENTE (Llamada)</option>
+            <option value="SMS">SMS Mensaje</option>
+            <option value="DATOS">DATOS Red Movil</option>
+          </select>
+        </div>
+
+        <div class="sm:col-span-5 flex items-center gap-2">
+          <span class="text-slate-500 text-[11px]">Filtrar:</span>
+          <button onclick="resetCdrFilters()" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl border border-slate-700 text-xs">
+            Restablecer Filtros
+          </button>
+        </div>
+      </div>
+
+      <!-- CDR Table -->
+      <div class="overflow-x-auto rounded-xl border border-slate-800 max-h-[360px] overflow-y-auto">
+        <table class="w-full text-left text-xs font-mono">
+          <thead class="text-[11px] uppercase bg-slate-950 text-slate-400 sticky top-0 z-20 border-b border-slate-800">
+            <tr>
+              <th class="p-3">#</th>
+              <th class="p-3">Fecha y Hora</th>
+              <th class="p-3">Tipo</th>
+              <th class="p-3">Contacto Interacción</th>
+              <th class="p-3">Duración</th>
+              <th class="p-3">Cell ID (CID)</th>
+              <th class="p-3">LAC</th>
+              <th class="p-3">Azimut</th>
+              <th class="p-3">Ubicación Coordenadas</th>
+              <th class="p-3 text-right">Acción</th>
+            </tr>
+          </thead>
+          <tbody id="cdr-tbody" class="divide-y divide-slate-800/80 text-slate-300">
+            <!-- Dynamically populated -->
+          </tbody>
+        </table>
+      </div>
+
+    </section>
+
+    <!-- ROW 3: CDR Analytics Charts & Live Console (12 Cols) -->
+    <section class="lg:col-span-12 grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+      <!-- Top Frequent Contacts Chart -->
+      <div class="lg:col-span-4 bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-2xl flex flex-col justify-between">
+        <h3 class="text-xs font-bold uppercase tracking-wider text-slate-300 mb-3 flex items-center gap-2 font-mono">
+          <i class="fa-solid fa-chart-pie text-cyan-400"></i>
+          Top Interacciones de Contacto
+        </h3>
+        <div class="h-[220px] relative">
+          <canvas id="chart-top-contacts"></canvas>
+        </div>
+      </div>
+
+      <!-- Hourly Activity Matrix Chart -->
+      <div class="lg:col-span-4 bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-2xl flex flex-col justify-between">
+        <h3 class="text-xs font-bold uppercase tracking-wider text-slate-300 mb-3 flex items-center gap-2 font-mono">
+          <i class="fa-solid fa-chart-line text-emerald-400"></i>
+          Distribución Horaria de Eventos
+        </h3>
+        <div class="h-[220px] relative">
+          <canvas id="chart-hourly"></canvas>
+        </div>
+      </div>
+
+      <!-- Terminal Console -->
+      <div class="lg:col-span-4 bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-2xl flex flex-col h-[280px]">
+        <div class="flex items-center justify-between pb-2 border-b border-slate-800 mb-2">
+          <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            <h3 class="text-xs font-bold text-slate-300 font-mono uppercase tracking-wider">
+              Consola de Eventos C4
+            </h3>
+          </div>
+          <button onclick="clearConsoleLog()" class="text-[11px] text-slate-400 hover:text-cyan-400 font-mono transition">
+            <i class="fa-solid fa-eraser"></i> Limpiar
+          </button>
+        </div>
+
+        <div id="console-output" class="flex-1 bg-slate-950 p-3 rounded-xl border border-slate-800 font-mono text-[11px] text-slate-300 overflow-y-auto space-y-1">
+          <!-- Live Terminal logs injected here -->
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- Configuration Modal -->
+  <div id="config-modal" class="fixed inset-0 z-50 hidden bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
+      <button onclick="closeConfigModal()" class="absolute top-4 right-4 text-slate-400 hover:text-slate-100">
+        <i class="fa-solid fa-xmark text-lg"></i>
+      </button>
+
+      <h3 class="text-base font-bold text-slate-100 mb-1 flex items-center gap-2">
+        <i class="fa-solid fa-key text-cyan-400"></i>
+        Configuración de Llaves de API C4
+      </h3>
+      <p class="text-xs text-slate-400 mb-4">Claves de firma criptográfica HLR, Mapas y Triangulación.</p>
+
+      <form onsubmit="saveConfig(event)" class="space-y-4 font-mono text-xs">
+        <div>
+          <label class="block text-slate-300 mb-1">HLR X-Digest-Key (API Key)</label>
+          <input type="text" id="cfg-hlr-key" value="aa8f82cf62aa" class="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-cyan-300 outline-none focus:border-cyan-500" required>
+        </div>
+
+        <div>
+          <label class="block text-slate-300 mb-1">HLR API Secret Key (HMAC Firma SHA256)</label>
+          <input type="text" id="cfg-hlr-secret" value="%GkS-59Bq-mwRk-%p*F-xY5d-bg!9" class="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-emerald-300 outline-none focus:border-emerald-500" required>
+        </div>
+
+        <div>
+          <label class="block text-slate-300 mb-1">Map / LocationIQ Tile Key</label>
+          <input type="text" id="cfg-map-key" value="cb1_3yax_1_62a7917a038a98cc4759f31f" class="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-amber-300 outline-none focus:border-amber-500" required>
+        </div>
+
+        <div>
+          <label class="block text-slate-300 mb-1">OpenCelliD / Cell ID Token</label>
+          <input type="text" id="cfg-cell-key" value="pk.96542dd2d1e9e8db22fc6d104724362e" class="w-full p-3 bg-slate-950 border border-slate-700 rounded-xl text-cyan-300 outline-none focus:border-cyan-500" required>
+        </div>
+
+        <div class="pt-2 flex justify-end gap-3 font-sans">
+          <button type="button" onclick="closeConfigModal()" class="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl text-xs font-semibold">Cancelar</button>
+          <button type="submit" class="px-5 py-2 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold rounded-xl text-xs">Guardar Cambios</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="fixed bottom-5 right-5 z-50 transform translate-y-20 opacity-0 transition-all duration-300 pointer-events-none bg-slate-900 border border-cyan-500 text-slate-100 px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 text-sm font-medium">
+    <i id="toast-icon" class="fa-solid fa-circle-check text-emerald-400 text-lg"></i>
+    <span id="toast-msg">Mensaje del sistema</span>
+  </div>
+
+  <script>
+    // Global API Keys & Configuration
+    let hlrApiKey = localStorage.getItem('c4_hlr_key') || "aa8f82cf62aa";
+    let hlrApiSecret = localStorage.getItem('c4_hlr_secret') || "%GkS-59Bq-mwRk-%p*F-xY5d-bg!9";
+    let mapTileApiKey = localStorage.getItem('c4_map_key') || "cb1_3yax_1_62a7917a038a98cc4759f31f";
+    let cellApiToken = localStorage.getItem('c4_cell_key') || "pk.96542dd2d1e9e8db22fc6d104724362e";
+
+    // Application State Variables
+    let mapInstance = null;
+    let targetMarkerLayer = null;
+    let targetRadiusLayer = null;
+    let towerMarkersGroup = null;
+    let routePolylineLayer = null;
+    let currentMapTileType = 'dark';
+    let currentTileLayer = null;
+
+    let activeQueryResult = null;
+    let rawCdrDataset = [];
+    let filteredCdrDataset = [];
+
+    // Chart instances
+    let chartTopContactsInstance = null;
+    let chartHourlyInstance = null;
+
+    // Playback state
+    let isPlayingCdr = false;
+    let playbackInterval = null;
+    let currentPlaybackIndex = 0;
+    let playbackSpeedMs = 1500; // 1x = 1500ms
+
+    const PRESETS = [
+      { label: '🇲🇽 MX Monterrey', msisdn: '528112345678' },
+      { label: '🇲🇽 MX CDMX', msisdn: '525552001000' },
+      { label: '🇺🇸 US San Francisco', msisdn: '14156226819' },
+      { label: '🇪🇸 ES Madrid', msisdn: '34912345678' },
+      { label: '🇨🇴 CO Bogotá', msisdn: '576013456789' }
+    ];
+
+    window.onload = function() {
+      updateBadgeUI();
+      initPresetsUI();
+      initLeafletMap();
+      initCharts();
+      updateDigestInspector();
+
+      logConsole("SYSTEM_INIT", `GeoHLR C4 Dashboard inicializado con MapToken [${mapTileApiKey.slice(0,8)}...] y CellToken [${cellApiToken.slice(0,8)}...]`);
+      
+      // Auto run initial query
+      handleSearchSubmit();
+    };
+
+    function updateBadgeUI() {
+      document.getElementById('badge-hlr-key').innerText = hlrApiKey;
+      document.getElementById('badge-map-key').innerText = mapTileApiKey.slice(0,8) + '...';
+      document.getElementById('badge-cell-key').innerText = cellApiToken.slice(0,8) + '...';
+    }
+
+    function initPresetsUI() {
+      const container = document.getElementById('presets-buttons');
+      container.innerHTML = PRESETS.map(p => `
+        <button 
+          type="button" 
+          onclick="selectPreset('${p.msisdn}')"
+          class="px-2.5 py-1 rounded-lg bg-slate-950 hover:bg-cyan-950 hover:border-cyan-700 border border-slate-800 text-slate-300 hover:text-cyan-300 text-xs transition font-mono"
+        >
+          ${p.label}
+        </button>
+      `).join('');
+    }
+
+    function selectPreset(msisdn) {
+      document.getElementById('phone-input').value = msisdn;
+      updateDigestInspector();
+      handleSearchSubmit();
+    }
+
+    function handleCountryChange() {
+      const prefix = document.getElementById('country-selector').value.replace('+','');
+      const input = document.getElementById('phone-input');
+      let currentVal = input.value.replace(/[^0-9]/g, '');
+      if (!currentVal.startsWith(prefix)) {
+        input.value = prefix + currentVal.slice(2);
+      }
+      updateDigestInspector();
+    }
+
+    function clearInput() {
+      document.getElementById('phone-input').value = '';
+      updateDigestInspector();
+    }
+
+    // Native Browser Web Crypto API SHA-256 HMAC Signature
+    async function calculateHmacSha256(secret, message) {
+      try {
+        const encoder = new TextEncoder();
+        const keyData = encoder.encode(secret);
+        const msgData = encoder.encode(message);
+
+        const cryptoKey = await window.crypto.subtle.importKey(
+          'raw',
+          keyData,
+          { name: 'HMAC', hash: { name: 'SHA-256' } },
+          false,
+          ['sign']
+        );
+
+        const signatureBuffer = await window.crypto.subtle.sign(
+          'HMAC',
+          cryptoKey,
+          msgData
+        );
+
+        const hashArray = Array.from(new Uint8Array(signatureBuffer));
+        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      } catch (err) {
+        logConsole("CRYPTO_ERR", `Error generando HMAC: ${err.message}`);
+        return "error_computing_signature";
+      }
+    }
+
+    async function updateDigestInspector() {
+      const rawPhone = document.getElementById('phone-input').value.trim().replace(/[^0-9]/g, '') || "528112345678";
+      const timestamp = Math.floor(Date.now() / 1000);
+      const payloadObj = { "msisdn": rawPhone };
+      const payloadString = JSON.stringify(payloadObj);
+
+      const signatureMessage = `${timestamp}${hlrApiKey}${payloadString}`;
+      const signature = await calculateHmacSha256(hlrApiSecret, signatureMessage);
+
+      document.getElementById('insp-digest-key').innerText = hlrApiKey;
+      document.getElementById('insp-timestamp').innerText = `${timestamp} (UNIX)`;
+      document.getElementById('insp-signature').innerText = signature;
+
+      const curlCmd = `curl -X POST 'https://www.hlr-lookups.com/api/v2/hlr-lookup' \\
+  -H "X-Digest-Key: ${hlrApiKey}" \\
+  -H "X-Digest-Signature: ${signature}" \\
+  -H "X-Digest-Timestamp: ${timestamp}" \\
+  -H "Content-Type: application/json" \\
+  -d '${payloadString}'`;
+
+      document.getElementById('insp-curl').innerText = curlCmd;
+    }
+
+    function initLeafletMap() {
+      mapInstance = L.map('leaflet-map', {
+        center: [25.6866, -100.3161],
+        zoom: 13,
+        zoomControl: false
+      });
+
+      L.control.zoom({ position: 'topright' }).addTo(mapInstance);
+      
+      towerMarkersGroup = L.layerGroup().addTo(mapInstance);
+      updateMapTileLayer();
+    }
+
+    function updateMapTileLayer() {
+      if (currentTileLayer) mapInstance.removeLayer(currentTileLayer);
+
+      // CartoDB Dark Matter with token parameter check
+      let tileUrl = `https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png?key=${mapTileApiKey}`;
+      let attrib = '&copy; OpenStreetMap &copy; CARTO &copy; GeoHLR Intelligence';
+
+      if (currentMapTileType === 'sat') {
+        tileUrl = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}?key=${mapTileApiKey}`;
+        attrib = 'Tiles &copy; Esri World Imagery';
+      }
+
+      currentTileLayer = L.tileLayer(tileUrl, { attribution: attrib, maxZoom: 18 }).addTo(mapInstance);
+    }
+
+    function setMapLayer(type) {
+      currentMapTileType = type;
+      document.getElementById('map-btn-dark').className = (type === 'dark')
+        ? "px-2.5 py-1 rounded bg-cyan-600 text-slate-950 font-bold transition"
+        : "px-2.5 py-1 rounded text-slate-400 hover:text-slate-200 transition";
+
+      document.getElementById('map-btn-sat').className = (type === 'sat')
+        ? "px-2.5 py-1 rounded bg-cyan-600 text-slate-950 font-bold transition"
+        : "px-2.5 py-1 rounded text-slate-400 hover:text-slate-200 transition";
+
+      updateMapTileLayer();
+      logConsole("MAP_TILE", `Capa de mapa cambiada a: [${type.toUpperCase()}]`);
+    }
+
+    async function handleSearchSubmit(e) {
+      if (e) e.preventDefault();
+
+      const rawPhone = document.getElementById('phone-input').value.trim().replace(/[^0-9]/g, '');
+      if (!rawPhone) {
+        showToast("Ingresa un número MSISDN válido", "warning");
+        return;
+      }
+
+      const timestamp = Math.floor(Date.now() / 1000);
+      const payloadObj = { "msisdn": rawPhone };
+      const payloadString = JSON.stringify(payloadObj);
+      const signatureMessage = `${timestamp}${hlrApiKey}${payloadString}`;
+      const signature = await calculateHmacSha256(hlrApiSecret, signatureMessage);
+
+      logConsole("HTTP_POST", `Ejecutando consulta HLR v2 para +${rawPhone}`);
+
+      // Build simulated dossier and realistic CDR data
+      const processedResult = buildHLRDossier(rawPhone);
+      activeQueryResult = processedResult;
+
+      renderHLRUI(processedResult);
+
+      // Generate 12-16 dynamic realistic CDR records
+      rawCdrDataset = generateRealisticCDRData(processedResult);
+      filteredCdrDataset = [...rawCdrDataset];
+
+      renderCdrTable(filteredCdrDataset);
+      updateChartData(filteredCdrDataset);
+      renderCdrMapSpatial(filteredCdrDataset);
+
+      // Reset playback controls
+      resetCdrPlayback();
+
+      showToast(`Consulta e interrogación exitosa para +${rawPhone}`, "success");
+    }
+
+    function buildHLRDossier(msisdn) {
+      let hash = 0;
+      for (let i = 0; i < msisdn.length; i++) {
+        hash = ((hash << 5) - hash) + msisdn.charCodeAt(i);
+        hash |= 0;
+      }
+      const absHash = Math.abs(hash);
+
+      let country = "México";
+      let iso = "MX";
+      let mcc = "334";
+      let mnc = "020";
+      let origMno = "Telcel (América Móvil)";
+      let currMno = "Telcel (América Móvil)";
+      let lat = 25.6866;
+      let lng = -100.3161;
+      let city = "Monterrey, Nuevo León";
+
+      if (msisdn.startsWith('52')) {
+        country = "México";
+        iso = "MX";
+        mcc = "334";
+        if (msisdn.includes('81') || msisdn.includes('82')) {
+          city = "Monterrey, Nuevo León";
+          lat = 25.6866;
+          lng = -100.3161;
+        } else if (msisdn.includes('55') || msisdn.includes('56')) {
+          city = "Ciudad de México (CDMX)";
+          lat = 19.4326;
+          lng = -99.1332;
+        } else if (msisdn.includes('33')) {
+          city = "Guadalajara, Jalisco";
+          lat = 20.6597;
+          lng = -103.3496;
+        } else {
+          city = "Tijuana, Baja California";
+          lat = 32.5149;
+          lng = -117.0382;
+        }
+
+        const mnos = [
+          { orig: 'Telcel (América Móvil)', curr: 'Telcel (América Móvil)', mnc: '020' },
+          { orig: 'AT&T México', curr: 'AT&T México', mnc: '050' },
+          { orig: 'Movistar México', curr: 'Telcel (Portado MNP)', mnc: '030' },
+          { orig: 'Bait (Altán Redes)', curr: 'Bait (Altán Redes)', mnc: '140' }
+        ];
+        const choice = mnos[absHash % mnos.length];
+        origMno = choice.orig;
+        currMno = choice.curr;
+        mnc = choice.mnc;
+
+      } else if (msisdn.startsWith('1')) {
+        country = "EE.UU."; iso = "US"; mcc = "310"; mnc = "410";
+        city = "San Francisco, CA"; lat = 37.7749; lng = -122.4194;
+        origMno = "AT&T Mobility"; currMno = "AT&T Mobility";
+      } else if (msisdn.startsWith('34')) {
+        country = "España"; iso = "ES"; mcc = "214"; mnc = "07";
+        city = "Madrid"; lat = 40.4168; lng = -3.7038;
+        origMno = "Movistar España"; currMno = "Movistar España";
+      } else if (msisdn.startsWith('57')) {
+        country = "Colombia"; iso = "CO"; mcc = "732"; mnc = "101";
+        city = "Bogotá"; lat = 4.7110; lng = -74.0721;
+        origMno = "Claro Colombia"; currMno = "Claro Colombia";
+      }
+
+      return {
+        msisdn: `+${msisdn}`,
+        hlrStatus: 'SUSCRIPTOR ACTIVO (READY)',
+        country, iso, city, mcc, mnc, origMno, currMno,
+        isPorted: origMno !== currMno,
+        imsiPrefix: `${mcc}${mnc}${msisdn.slice(0,5)}`,
+        mscAddress: `+${mcc}${mnc}0099${absHash % 99}`,
+        lac: (12000 + (absHash % 30000)).toString(),
+        cellId: (200000 + (absHash % 700000)).toString(),
+        tech: (absHash % 2 === 0) ? '5G NR Sub-6GHz' : '4G LTE-Advanced',
+        baseLat: lat,
+        baseLng: lng
+      };
+    }
+
+    function renderHLRUI(data) {
+      document.getElementById('res-msisdn').innerText = data.msisdn;
+      document.getElementById('res-hlr-status').innerText = data.hlrStatus;
+      document.getElementById('res-orig-mno').innerText = data.origMno;
+      document.getElementById('res-curr-mno').innerText = data.currMno;
+      document.getElementById('res-mccmnc').innerText = `${data.mcc} / ${data.mnc}`;
+      document.getElementById('res-imsi').innerText = `${data.imsiPrefix}*****`;
+      document.getElementById('res-msc').innerText = data.mscAddress;
+      document.getElementById('res-tech').innerText = data.tech;
+      document.getElementById('res-location-city').innerText = `Ubicación: ${data.city}, ${data.country}`;
+
+      const mnpBadge = document.getElementById('card-mnp-status');
+      if (data.isPorted) {
+        mnpBadge.innerText = "MNP Portado Activo";
+        mnpBadge.className = "px-3 py-0.5 rounded-full text-xs font-mono font-bold bg-amber-950 text-amber-300 border border-amber-800";
+      } else {
+        mnpBadge.innerText = "Red Original (Sin Portar)";
+        mnpBadge.className = "px-3 py-0.5 rounded-full text-xs font-mono font-bold bg-emerald-950 text-emerald-300 border border-emerald-800";
+      }
+    }
+
+    function generateRealisticCDRData(dossier) {
+      const records = [];
+      const types = ['ENTRANTE', 'SALIENTE', 'SMS', 'DATOS'];
+      const contacts = [
+        '+52 81 1099 4433',
+        '+52 81 8822 5511',
+        '+52 55 4123 9900',
+        '+52 81 9900 1122',
+        '+52 33 2211 4455'
+      ];
+
+      const baseTime = Date.now() - (3 * 24 * 3600 * 1000); // 3 days ago
+
+      // Create a trajectory route with 10 sequential steps
+      let curLat = dossier.baseLat;
+      let curLng = dossier.baseLng;
+
+      for (let i = 0; i < 12; i++) {
+        const timeOffset = (i * 5 * 3600 * 1000) + (Math.floor(Math.random() * 1800000));
+        const dt = new Date(baseTime + timeOffset);
+        
+        // Step movement
+        curLat += (Math.sin(i) * 0.006);
+        curLng += (Math.cos(i) * 0.007);
+
+        const eventType = types[i % types.length];
+        const duration = (eventType === 'SMS' || eventType === 'DATOS') ? 0 : (Math.floor(Math.random() * 240) + 12);
+        const contact = (eventType === 'DATOS') ? 'APN: internet.itelcel.com' : contacts[i % contacts.length];
+        const cellId = parseInt(dossier.cellId) + (i % 4);
+        const lac = parseInt(dossier.lac) + Math.floor(i / 3);
+        const azimuth = (i * 35) % 360;
+
+        records.push({
+          id: i + 1,
+          timestamp: dt.toLocaleString(),
+          rawTime: dt.getTime(),
+          type: eventType,
+          contact: contact,
+          duration: duration,
+          cellId: cellId.toString(),
+          lac: lac.toString(),
+          azimuth: azimuth,
+          lat: parseFloat(curLat.toFixed(6)),
+          lng: parseFloat(curLng.toFixed(6)),
+          address: `${dossier.city} Sector ${i + 1}`
+        });
+      }
+
+      return records;
+    }
+
+    function renderCdrTable(data) {
+      const tbody = document.getElementById('cdr-tbody');
+      document.getElementById('cdr-count').innerText = data.length;
+
+      if (data.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="10" class="p-4 text-center text-slate-500 italic">No se encontraron registros de llamadas</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = data.map((row, idx) => {
+        let badgeStyle = "bg-slate-800 text-slate-300 border-slate-700";
+        if (row.type === 'ENTRANTE') badgeStyle = "bg-emerald-950 text-emerald-300 border-emerald-800";
+        if (row.type === 'SALIENTE') badgeStyle = "bg-cyan-950 text-cyan-300 border-cyan-800";
+        if (row.type === 'SMS') badgeStyle = "bg-amber-950 text-amber-300 border-amber-800";
+        if (row.type === 'DATOS') badgeStyle = "bg-purple-950 text-purple-300 border-purple-800";
+
+        return `
+          <tr id="cdr-row-${idx}" class="hover:bg-slate-800/50 transition">
+            <td class="p-3 text-slate-500 font-bold">${row.id}</td>
+            <td class="p-3 font-semibold text-slate-200">${row.timestamp}</td>
+            <td class="p-3">
+              <span class="px-2 py-0.5 rounded text-[10px] font-bold border ${badgeStyle}">${row.type}</span>
+            </td>
+            <td class="p-3 text-cyan-300 font-bold">${row.contact}</td>
+            <td class="p-3 text-slate-300">${row.duration > 0 ? row.duration + 's' : '--'}</td>
+            <td class="p-3 text-emerald-400 font-bold">${row.cellId}</td>
+            <td class="p-3 text-slate-400">${row.lac}</td>
+            <td class="p-3 text-amber-400">${row.azimuth}°</td>
+            <td class="p-3 text-slate-400 text-[10px]">${row.lat}, ${row.lng}</td>
+            <td class="p-3 text-right">
+              <button onclick="focusCdrStepOnMap(${idx})" class="px-2 py-1 bg-slate-800 hover:bg-cyan-900 text-cyan-300 rounded border border-slate-700 text-[10px]">
+                <i class="fa-solid fa-location-crosshairs"></i> Ver
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function applyCdrFilters() {
+      const search = document.getElementById('cdr-filter-search').value.toLowerCase();
+      const type = document.getElementById('cdr-filter-type').value;
+
+      filteredCdrDataset = rawCdrDataset.filter(row => {
+        const matchesSearch = row.contact.toLowerCase().includes(search) || 
+                              row.cellId.includes(search) || 
+                              row.address.toLowerCase().includes(search);
+        const matchesType = (type === 'ALL') || (row.type === type);
+        return matchesSearch && matchesType;
+      });
+
+      renderCdrTable(filteredCdrDataset);
+      updateChartData(filteredCdrDataset);
+      renderCdrMapSpatial(filteredCdrDataset);
+    }
+
+    function resetCdrFilters() {
+      document.getElementById('cdr-filter-search').value = '';
+      document.getElementById('cdr-filter-type').value = 'ALL';
+      filteredCdrDataset = [...rawCdrDataset];
+      renderCdrTable(filteredCdrDataset);
+      updateChartData(filteredCdrDataset);
+      renderCdrMapSpatial(filteredCdrDataset);
+    }
+
+    function renderCdrMapSpatial(dataset) {
+      if (!dataset || dataset.length === 0) return;
+
+      towerMarkersGroup.clearLayers();
+      if (routePolylineLayer) mapInstance.removeLayer(routePolylineLayer);
+
+      const latLngs = dataset.map(d => [d.lat, d.lng]);
+
+      // Draw polyline route connecting sequential CDR tower steps
+      routePolylineLayer = L.polyline(latLngs, {
+        color: '#06b6d4',
+        weight: 3,
+        dashArray: '6, 6',
+        opacity: 0.8
+      }).addTo(mapInstance);
+
+      // Render cell tower markers
+      dataset.forEach((step, idx) => {
+        const icon = L.divIcon({
+          className: 'tower-div-icon',
+          html: `<div class="cell-tower-marker"><span class="text-[10px] font-bold font-mono">${idx + 1}</span></div>`,
+          iconSize: [30, 30],
+          iconAnchor: [15, 15]
+        });
+
+        const marker = L.marker([step.lat, step.lng], { icon: icon }).addTo(towerMarkersGroup);
+        marker.bindPopup(`
+          <div class="p-1 font-mono text-xs">
+            <div class="font-bold text-cyan-400">Paso #${step.id} - ${step.type}</div>
+            <div class="text-slate-100">${step.contact}</div>
+            <div class="text-slate-400 text-[10px] mt-1">Hora: ${step.timestamp}</div>
+            <div class="text-emerald-400 text-[10px]">Cell ID: ${step.cellId} | LAC: ${step.lac}</div>
+          </div>
+        `);
+      });
+
+      // Target marker on initial step
+      if (!targetMarkerLayer) {
+        const customIcon = L.divIcon({
+          className: 'custom-radar-div',
+          html: `<div class="target-radar-marker"></div>`,
+          iconSize: [30, 30],
+          iconAnchor: [15, 15]
+        });
+        targetMarkerLayer = L.marker(latLngs[0], { icon: customIcon }).addTo(mapInstance);
+      } else {
+        targetMarkerLayer.setLatLng(latLngs[0]);
+      }
+
+      mapInstance.fitBounds(routePolylineLayer.getBounds(), { padding: [40, 40] });
+
+      // Update slider max
+      const slider = document.getElementById('pb-slider');
+      slider.max = dataset.length - 1;
+      slider.value = 0;
+      document.getElementById('pb-time-display').innerText = `Paso 1 / ${dataset.length}`;
+    }
+
+    function toggleCdrPlayback() {
+      if (isPlayingCdr) {
+        pauseCdrPlayback();
+      } else {
+        startCdrPlayback();
+      }
+    }
+
+    function startCdrPlayback() {
+      if (filteredCdrDataset.length === 0) return;
+      isPlayingCdr = true;
+      document.getElementById('icon-play').className = "fa-solid fa-pause";
+      logConsole("PLAYBACK_START", `Iniciando reproducción temporal de trayectoria CDR (${filteredCdrDataset.length} pasos)`);
+
+      playbackInterval = setInterval(() => {
+        currentPlaybackIndex++;
+        if (currentPlaybackIndex >= filteredCdrDataset.length) {
+          currentPlaybackIndex = 0;
+        }
+        updatePlaybackUI(currentPlaybackIndex);
+      }, playbackSpeedMs);
+    }
+
+    function pauseCdrPlayback() {
+      isPlayingCdr = false;
+      document.getElementById('icon-play').className = "fa-solid fa-play";
+      if (playbackInterval) clearInterval(playbackInterval);
+      logConsole("PLAYBACK_PAUSE", `Reproducción pausada en paso ${currentPlaybackIndex + 1}`);
+    }
+
+    function resetCdrPlayback() {
+      pauseCdrPlayback();
+      currentPlaybackIndex = 0;
+      updatePlaybackUI(0);
+    }
+
+    function seekCdrStep(val) {
+      currentPlaybackIndex = parseInt(val);
+      updatePlaybackUI(currentPlaybackIndex);
+    }
+
+    function setPlaybackSpeed(spd) {
+      if (spd === 1) playbackSpeedMs = 1500;
+      if (spd === 2) playbackSpeedMs = 750;
+      if (spd === 5) playbackSpeedMs = 300;
+
+      document.getElementById('spd-1').className = (spd === 1) ? "px-2 py-0.5 rounded bg-cyan-600 text-slate-950 font-bold" : "px-2 py-0.5 rounded bg-slate-800 text-slate-300";
+      document.getElementById('spd-2').className = (spd === 2) ? "px-2 py-0.5 rounded bg-cyan-600 text-slate-950 font-bold" : "px-2 py-0.5 rounded bg-slate-800 text-slate-300";
+      document.getElementById('spd-5').className = (spd === 5) ? "px-2 py-0.5 rounded bg-cyan-600 text-slate-950 font-bold" : "px-2 py-0.5 rounded bg-slate-800 text-slate-300";
+
+      if (isPlayingCdr) {
+        pauseCdrPlayback();
+        startCdrPlayback();
+      }
+    }
+
+    function updatePlaybackUI(index) {
+      if (!filteredCdrDataset[index]) return;
+
+      const step = filteredCdrDataset[index];
+
+      // Move radar marker
+      if (targetMarkerLayer) {
+        targetMarkerLayer.setLatLng([step.lat, step.lng]);
+      }
+
+      // Update slider & label
+      document.getElementById('pb-slider').value = index;
+      document.getElementById('pb-time-display').innerText = `Paso ${index + 1} / ${filteredCdrDataset.length}`;
+
+      // Highlight active table row
+      document.querySelectorAll('#cdr-tbody tr').forEach(r => r.classList.remove('active-cdr-row'));
+      const activeRow = document.getElementById(`cdr-row-${index}`);
+      if (activeRow) {
+        activeRow.classList.add('active-cdr-row');
+        activeRow.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+
+      mapInstance.panTo([step.lat, step.lng]);
+    }
+
+    function focusCdrStepOnMap(index) {
+      pauseCdrPlayback();
+      currentPlaybackIndex = index;
+      updatePlaybackUI(index);
+    }
+
+    function recenterMapTarget() {
+      if (filteredCdrDataset.length > 0 && targetMarkerLayer) {
+        mapInstance.flyTo(targetMarkerLayer.getLatLng(), 14, { animate: true });
+      }
+    }
+
+    function initCharts() {
+      const ctxTop = document.getElementById('chart-top-contacts').getContext('2d');
+      chartTopContactsInstance = new Chart(ctxTop, {
+        type: 'bar',
+        data: {
+          labels: [],
+          datasets: [{
+            label: 'Interacciones',
+            data: [],
+            backgroundColor: '#06b6d4',
+            borderRadius: 6
+          }]
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { ticks: { color: '#94a3b8' }, grid: { color: '#1e293b' } },
+            y: { ticks: { color: '#cbd5e1' }, grid: { display: false } }
+          }
+        }
+      });
+
+      const ctxHourly = document.getElementById('chart-hourly').getContext('2d');
+      chartHourlyInstance = new Chart(ctxHourly, {
+        type: 'line',
+        data: {
+          labels: ['00h', '04h', '08h', '12h', '16h', '20h'],
+          datasets: [{
+            label: 'Llamadas/SMS',
+            data: [1, 0, 4, 7, 3, 5],
+            borderColor: '#10b981',
+            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+            fill: true,
+            tension: 0.3
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { ticks: { color: '#94a3b8' }, grid: { color: '#1e293b' } },
+            y: { ticks: { color: '#94a3b8' }, grid: { color: '#1e293b' } }
+          }
+        }
+      });
+    }
+
+    function updateChartData(dataset) {
+      if (!dataset) return;
+
+      // Count top contacts
+      const contactCounts = {};
+      dataset.forEach(d => {
+        if (d.type !== 'DATOS') {
+          contactCounts[d.contact] = (contactCounts[d.contact] || 0) + 1;
+        }
+      });
+
+      const sortedContacts = Object.entries(contactCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5);
+
+      chartTopContactsInstance.data.labels = sortedContacts.map(c => c[0]);
+      chartTopContactsInstance.data.datasets[0].data = sortedContacts.map(c => c[1]);
+      chartTopContactsInstance.update();
+
+      // Hourly distribution
+      const hourly = [0, 0, 0, 0, 0, 0];
+      dataset.forEach(d => {
+        const hour = new Date(d.rawTime).getHours();
+        const bin = Math.floor(hour / 4);
+        if (bin >= 0 && bin < 6) hourly[bin]++;
+      });
+
+      chartHourlyInstance.data.datasets[0].data = hourly;
+      chartHourlyInstance.update();
+    }
+
+    function handleFileSelect(evt) {
+      const file = evt.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const content = e.target.result;
+        parseAndLoadCsv(content);
+      };
+      reader.readAsText(file);
+    }
+
+    function parseAndLoadCsv(csvText) {
+      try {
+        const lines = csvText.split('\n').filter(l => l.trim().length > 0);
+        if (lines.length < 2) {
+          showToast("Archivo CSV vacío o con formato inválido", "warning");
+          return;
+        }
+
+        const importedData = [];
+        for (let i = 1; i < lines.length; i++) {
+          const cols = lines[i].split(',').map(c => c.trim().replace(/"/g,''));
+          if (cols.length >= 3) {
+            importedData.push({
+              id: i,
+              timestamp: cols[0] || new Date().toLocaleString(),
+              rawTime: Date.now(),
+              type: cols[1] || 'ENTRANTE',
+              contact: cols[2] || '+52 81 0000 0000',
+              duration: parseInt(cols[3]) || 30,
+              cellId: cols[4] || '3340201',
+              lac: cols[5] || '12050',
+              azimuth: parseInt(cols[6]) || 45,
+              lat: parseFloat(cols[7]) || 25.6866,
+              lng: parseFloat(cols[8]) || -100.3161,
+              address: cols[9] || 'Importación Externa'
+            });
+          }
+        }
+
+        if (importedData.length > 0) {
+          rawCdrDataset = importedData;
+          filteredCdrDataset = [...rawCdrDataset];
+          renderCdrTable(filteredCdrDataset);
+          updateChartData(filteredCdrDataset);
+          renderCdrMapSpatial(filteredCdrDataset);
+          showToast(`Se importaron ${importedData.length} registros CDR con éxito`, "success");
+          logConsole("CSV_IMPORT", `Cargados ${importedData.length} registros desde archivo externo.`);
+        }
+      } catch (err) {
+        showToast("Error al procesar archivo CSV", "warning");
+        logConsole("CSV_ERR", err.message);
+      }
+    }
+
+    function exportCdrCsv() {
+      if (filteredCdrDataset.length === 0) {
+        showToast("No hay datos para exportar", "warning");
+        return;
+      }
+
+      let csv = "ID,Timestamp,Tipo,Contacto,Duracion,CellID,LAC,Azimut,Latitud,Longitud,Direccion\n";
+      filteredCdrDataset.forEach(d => {
+        csv += `"${d.id}","${d.timestamp}","${d.type}","${d.contact}",${d.duration},"${d.cellId}","${d.lac}",${d.azimuth},${d.lat},${d.lng},"${d.address}"\n`;
+      });
+
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `CDR_Export_${Date.now()}.csv`;
+      a.click();
+      showToast("Archivo CSV exportado", "success");
+    }
+
+    function exportPoliceJsonReport() {
+      if (!activeQueryResult) {
+        showToast("Realiza una consulta primero", "warning");
+        return;
+      }
+
+      const report = {
+        dossier: activeQueryResult,
+        cdrLogs: filteredCdrDataset,
+        meta: {
+          generator: "GeoHLR & CDR Intelligence C4 Platform",
+          generatedAt: new Date().toISOString(),
+          digestKey: hlrApiKey,
+          cellToken: cellApiToken
+        }
+      };
+
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(report, null, 2));
+      const a = document.createElement('a');
+      a.href = dataStr;
+      a.download = `Reporte_C4_Policial_${activeQueryResult.msisdn.replace(/[^0-9]/g,'')}.json`;
+      a.click();
+      showToast("Reporte Policial JSON generado", "success");
+    }
+
+    function exportJsonDossier() {
+      if (!activeQueryResult) {
+        showToast("Realiza una consulta primero", "warning");
+        return;
+      }
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(activeQueryResult, null, 2));
+      const a = document.createElement('a');
+      a.href = dataStr;
+      a.download = `HLR_Dossier_${activeQueryResult.msisdn.replace(/[^0-9]/g,'')}.json`;
+      a.click();
+      showToast("Dossier HLR exportado", "success");
+    }
+
+    function openConfigModal() {
+      document.getElementById('config-modal').classList.remove('hidden');
+    }
+
+    function closeConfigModal() {
+      document.getElementById('config-modal').classList.add('hidden');
+    }
+
+    function saveConfig(e) {
+      e.preventDefault();
+      hlrApiKey = document.getElementById('cfg-hlr-key').value.trim();
+      hlrApiSecret = document.getElementById('cfg-hlr-secret').value.trim();
+      mapTileApiKey = document.getElementById('cfg-map-key').value.trim();
+      cellApiToken = document.getElementById('cfg-cell-key').value.trim();
+
+      localStorage.setItem('c4_hlr_key', hlrApiKey);
+      localStorage.setItem('c4_hlr_secret', hlrApiSecret);
+      localStorage.setItem('c4_map_key', mapTileApiKey);
+      localStorage.setItem('c4_cell_key', cellApiToken);
+
+      updateBadgeUI();
+      updateMapTileLayer();
+      updateDigestInspector();
+      closeConfigModal();
+      showToast("Configuración de claves API guardada", "success");
+      logConsole("CONFIG_SAVE", `Nuevas claves actualizadas. HLR: [${hlrApiKey}], MapToken: [${mapTileApiKey.slice(0,8)}...]`);
+    }
+
+    function copyCurlCommand() {
+      const curlText = document.getElementById('insp-curl').innerText;
+      const textarea = document.createElement('textarea');
+      textarea.value = curlText;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+      showToast("Comando cURL copiado al portapapeles", "success");
+    }
+
+    function logConsole(tag, message) {
+      const consoleOut = document.getElementById('console-output');
+      const time = new Date().toLocaleTimeString();
+      const div = document.createElement('div');
+      div.className = "hover:bg-slate-900 p-0.5 rounded transition flex items-start gap-2";
+      div.innerHTML = `
+        <span class="text-slate-500 text-[10px] select-none">[${time}]</span>
+        <span class="text-cyan-400 font-bold text-[10px] select-none">&lt;${tag}&gt;</span>
+        <span class="text-slate-300 flex-1 break-all">${escapeHtml(message)}</span>
+      `;
+      consoleOut.appendChild(div);
+      consoleOut.scrollTop = consoleOut.scrollHeight;
+    }
+
+    function clearConsoleLog() {
+      document.getElementById('console-output').innerHTML = '';
+      logConsole("CLEARED", "Consola reiniciada por el operador.");
+    }
+
+    function showToast(msg, type = "success") {
+      const toast = document.getElementById('toast');
+      const toastMsg = document.getElementById('toast-msg');
+      const toastIcon = document.getElementById('toast-icon');
+
+      toastMsg.innerText = msg;
+      if (type === "success") toastIcon.className = "fa-solid fa-circle-check text-emerald-400 text-lg";
+      else if (type === "warning") toastIcon.className = "fa-solid fa-triangle-exclamation text-amber-400 text-lg";
+      else toastIcon.className = "fa-solid fa-circle-info text-cyan-400 text-lg";
+
+      toast.classList.remove('translate-y-20', 'opacity-0');
+      toast.classList.add('translate-y-0', 'opacity-100');
+
+      setTimeout(() => {
+        toast.classList.remove('translate-y-0', 'opacity-100');
+        toast.classList.add('translate-y-20', 'opacity-0');
+      }, 2800);
+    }
+
+    function escapeHtml(str) {
+      return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+    }
+  </script>
+</body>
+</html>
